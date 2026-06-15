@@ -4,4 +4,4 @@ Implementazione progetto dell'esame Algoritmi e Protocolli per la sicurezza
 Gruppo 26 :
 Francesco Pisacane, Alessandro Tedesco
 
-Documento del progetto : (documentazione/G26 - Project Work APS.pdf)
+[Documento del progetto](documentazione/G26%20-%20Project%20Work%20APS.pdf)

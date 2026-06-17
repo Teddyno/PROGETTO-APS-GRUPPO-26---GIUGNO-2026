@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-#   Implementazione G26 progetto APS
-#   Francesco Pisacane, Alessandro Tedesco
-
 import os
 import time
 import sys
@@ -74,7 +70,7 @@ class AutoritaRegistrazione:
                 "pk_e":pk_e, #Messa in chiaro affinché l'AE la legga
                 "firma_ar":firma    #La prova di autenticità
             }
-            print("AR: Token valido. Certificazione avvenuta.")
+            print("  [AR]: Token valido. Certificazione avvenuta.")
             return certificato
         return None
 
@@ -126,9 +122,9 @@ class AutoritaElettorale:
                 padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
                 hashes.SHA256()
             )
-            print("[AE] Firma del certificato VALIDA. Certificato autentico emanato dall'AR.")
+            print("  [AE] Firma del certificato VALIDA. Certificato autentico emanato dall'AR.")
         except InvalidSignature:
-            raise Exception("[AE] ALLARME: Firma del certificato NON VALIDA. Possibile frode!")
+            raise Exception("  [AE] ALLARME: Firma del certificato NON VALIDA. Possibile frode!")
 
         nonce=os.urandom(32)
         return nonce
@@ -143,9 +139,9 @@ class AutoritaElettorale:
                 padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
                 hashes.SHA256()
             )
-            print("[AE] Challenge Superata! Proof of Possession confermata.")
+            print("  [AE] Challenge Superata! Proof of Possession confermata.")
         except InvalidSignature:
-            raise Exception("[AE] FRODE: La firma della sfida non corrisponde al certificato!")
+            raise Exception("  [AE] FRODE: La firma della sfida non corrisponde al certificato!")
 
         id_pepper=sha256(cert_e["id_ar"]+self.pepper)
 
@@ -154,7 +150,7 @@ class AutoritaElettorale:
             session_token=genera_token()
             self.session_tokens.add(session_token)
             return session_token
-        print("Elettore non trovato!")
+        print("  Elettore non trovato!")
         return None
 
     def ricevi_voto(self,session_token,cv):
@@ -188,9 +184,9 @@ class AutoritaElettorale:
 
     def genera_merkle_tree_e_proofs(self):
         if not self.urna:
-            raise Exception("[AE] L'urna è vuota. Impossibile creare il Merkle Tree.")
+            raise Exception("  [AE] L'urna è vuota. Impossibile creare il Merkle Tree.")
 
-        print("[AE] Calcolo degli Hash dei crittogrammi H(C_v)...")
+        print("  [AE] Calcolo degli Hash dei crittogrammi H(C_v)...")
         # Calcoliamo H(C_v) per ogni voto e li ordiniamo per garantire l'anonimato temporale
         foglie=sorted([sha256(cv) for cv in self.urna])
 
@@ -249,13 +245,13 @@ class AutoritaElettorale:
             # Salviamo la prova associandola all'hash esadecimale del voto
             proofs_per_elettore[hash_foglia.hex()]=prova
 
-        print(f"[AE] Merkle Tree generato. Root: {merkle_root.hex()[:16]}...")
+        print(f"  [AE] Merkle Tree generato. Root: {merkle_root.hex()[:16]}...")
         return merkle_root, proofs_per_elettore
 
     def ricostruisci_chiave(self,custodi_presenti,quorum):
         if custodi_presenti>=quorum:
             self.chiave_ricostruita=True
-            print("[AE] Threshold Scheme: Chiave ricostruita con successo dai custodi.")
+            print("  [AE] Threshold Scheme: Chiave ricostruita con successo dai custodi.")
         else:
             raise Exception("Quorum non raggiunto per decifrare l'urna!")
 
@@ -263,7 +259,7 @@ class AutoritaElettorale:
         if not self.chiave_ricostruita:
             raise Exception("La chiave non è stata ricostruita!")
 
-        print(f"[AE] Avvio Shuffling di {len(self.urna)} schede...")
+        print(f"  [AE] Avvio Shuffling di {len(self.urna)} schede...")
         random.shuffle(self.urna)
 
         risultati={"A":0,"B":0,"C":0,"Bianca":0}
@@ -330,9 +326,9 @@ class Elettore:
             padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
             hashes.SHA256()
           )
-          print("[E] Ricevuta verificata e valida!")
+          print("  [E] Ricevuta verificata e valida!")
         except InvalidSignature:
-            raise Exception("[E] La ricevuta del voto non coincide!")
+            raise Exception("  [E] La ricevuta del voto non coincide!")
 
     def verifica_merkle_proof(self,prova,merkle_root):
         hash=sha256(self.ricevuta_voto["cv"])
@@ -361,21 +357,27 @@ def run_simulation():
     ae=AutoritaElettorale()
     elettore=Elettore("RSSMRA80A01H501U")
 
-    # 1. KEY DISTRIBUTION
+    print("\n[FASE 1] -> REGISTRAZIONE & KEY DISTRIBUTION")
+    print("----------------------------------------------------------------------")
+
     ae.inserisci_in_lista(elettore.cf)
     elettore.token_ar=ar.registra_avente_diritto(elettore.cf)
-    print(f"Token Out-of-band generato e inviato per posta: {elettore.token_ar}")
+    print(f"  [AR]:Token Out-of-band generato e inviato per posta: {elettore.token_ar}")
     elettore.genera_chiavi()
+    print("  [Client]: Generata nuova coppia di chiavi effimere per la sessione di voto (PK_E, SK_E).")
     elettore.certificato=ar.valida_e_rilascia_certificato(elettore.cf, elettore.token_ar, elettore.public_key)
 
-    # 2. AUTENTICAZIONE
+    print("\n[FASE 2] -> AUTENTICAZIONE e VERIFICA DEL DIRITTO AL VOTO")
+    print("----------------------------------------------------------------------")
+
     ae.set_lista_elettorale(ar.get_lista())
     nonce=ae.autentica_con_certificato(elettore.certificato, ar.public_key)
     firma_e=elettore.risolvi_challenge_ae(nonce)
     session_token=ae.verifica_nonce(nonce, firma_e, elettore.certificato)
     if session_token:
-      print("Elettore autenticato, Session Token rilasciato.")
-
+      print("  Elettore autenticato, Session Token rilasciato.")
+      print("\n[FASE 3] -> ESPRESSIONE DEL VOTO e CRITTOGRAFIA DI SESSIONE")
+      print("----------------------------------------------------------------------")
       #Misura Tempo di Cifratura (Costo Computazionale Client)
       start_time=time.perf_counter()
       cv=elettore.cifra_voto(ae.public_key1,"A")
@@ -385,39 +387,47 @@ def run_simulation():
       # WP4: Misura Dimensione Messaggio
       dimensione_cv=sys.getsizeof(cv)
 
-      print(f"Elettore: Voto cifrato in {tempo_cifratura_ms:.2f} ms")
-      print(f"Dimensione del crittogramma inviato: {dimensione_cv} bytes")
+      print(f"  [METRICA WP4 - Client]: Voto cifrato (OAEP) in {tempo_cifratura_ms:.2f} ms")
+      print(f"  [METRICA WP4 - Network]: Dimensione del crittogramma inviato: {dimensione_cv} bytes")
 
       # Invio Voto
       elettore.ricevuta_voto=ae.ricevi_voto(session_token,cv)
-      print(f"Voto ricevuto. Hash Ricevuta: {elettore.ricevuta_voto["cv"].hex()[:16]}...")
+      print(f"  Voto ricevuto. Hash Ricevuta: {elettore.ricevuta_voto["cv"].hex()[:16]}...")
 
       #Verifica ricevuta corretta
       elettore.verifica_ricevuta(elettore.ricevuta_voto, ae.public_key2)
+      print(f"  [AE -> Client]: Voto inserito nell'urna digitale. Ricevuta emessa.")
 
     # Popoliamo l'urna con dei voti fittizi per misurare i tempi di spoglio
-    print("\n[Simulazione] Inserimento di 99 voti aggiuntivi nell'urna...")
+    print("\n  [SIMULAZIONE] Inserimento di 99 voti aggiuntivi nell'urna...")
     for _ in range(99):
         voto_random=random.choice(["A", "B", "C", "Bianca"])
         cv_fake=elettore.cifra_voto(ae.public_key1, voto_random)
         ae.urna.append(cv_fake)
 
-    # 3. SPOGLIO
+    print("\n[FASE 4] -> AUDITING PUBBLICO & VERIFICABILITÀ")
+    print("----------------------------------------------------------------------")
+    print("  === Creazione merke tree ===")
+
     start_time=time.perf_counter()
     merkle_root,merkle_proofs=ae.genera_merkle_tree_e_proofs()
     end_time=time.perf_counter()
     tempo_creazione_MT=(end_time-start_time)*1000
-    print(f"Tempo di creazione del Merkle Tree: {tempo_creazione_MT:.2f}ms")
+    print(f"  [METRICA WP4 - Server]: Tempo di creazione del Merkle Tree: {tempo_creazione_MT:.2f}ms")
+
+    print("\n  === Verifica individuale ===")
 
     start_time=time.perf_counter()
     if elettore.verifica_merkle_proof(merkle_proofs[sha256(elettore.ricevuta_voto["cv"]).hex()], merkle_root):
-      print("Voto verificato e presente nel Merkle Tree")
+      print("  [SUCCESS]: Voto verificato e presente nel Merkle Tree")
     else:
-      print("Voto NON presente nel Merkle tree")
+      print("  [ERROR]: Voto NON presente nel Merkle tree")
     end_time=time.perf_counter()
     tempo_verifica_MP=(end_time-start_time)*1000
-    print(f"Tempo di verifica della Merkle Proof: {tempo_verifica_MP:.2f}ms")
+    print(f"  [METRICA WP4 - Client]: Tempo di verifica della Merkle Proof: {tempo_verifica_MP:.2f}ms")
 
+    print("\n[FASE 5] -> APERTURA URNA, SHUFFLING E CONTEGGIO DEI VOTI")
+    print("----------------------------------------------------------------------")
     ae.ricostruisci_chiave(5,3)
 
     # WP4: Misura Tempo di Spoglio (Costo Computazionale Server)
@@ -426,9 +436,12 @@ def run_simulation():
     end_time=time.perf_counter()
     tempo_spoglio_s=(end_time-start_time)
 
-    print("\n=== RISULTATI AGGREGATI PUBBLICATI ===")
-    print(risultati_finali)
-    print(f"Tempo totale per decifrare e aggregare {len(ae.urna)} voti: {tempo_spoglio_s:.4f} secondi")
-
+    print("\n----------------------------------------------------------------------")
+    print("             PUBBLICAZIONE DEI RISULTATI ELETTORALI PUBBLICI          ")
+    print("----------------------------------------------------------------------")
+    print(f"  Esito dello Scrutinio: {risultati_finali}")
+    print(f"  [METRICA WP4 - Server Total]: Tempo totale di Mixnet Shuffling e Spoglio")
+    print(f"                                per {len(ae.urna)} schede: {tempo_spoglio_s:.4f} secondi.")
+    print("----------------------------------------------------------------------\n")
 if __name__=="__main__":
     run_simulation()
